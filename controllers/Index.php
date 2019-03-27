@@ -135,9 +135,16 @@ class Index extends BaseController {
         }
 
         if (\F3::get('auth')->login($username, $password)) {
-            $this->view->jsonSuccess([
+            $json = [
                 'success' => true
-            ]);
+            ];
+
+            $jwt = \F3::get('auth')->getPayload();
+            if ($jwt !== null) {
+                $json['jwt'] = $jwt;
+            }
+
+            $this->view->jsonSuccess($jwt);
         }
 
         $this->view->jsonSuccess([

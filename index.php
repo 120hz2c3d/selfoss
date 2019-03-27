@@ -9,7 +9,7 @@ if ($lang != '0' && $lang != '') {
 }
 
 // init authentication
-$f3->set('auth', new \helpers\Authentication());
+$f3->set('auth', new \helpers\Authentication($f3->get('auth_type')));
 
 /** @var stdClass JS client package manifest */
 $clientPackage = json_decode(file_get_contents(__DIR__ . '/public/package.json'));

@@ -22,7 +22,8 @@
         "smottt/wideimage": "^1.1",
         "tedivm/jshrink": "^1.0",
         "willwashburn/phpamo": "^1.0",
-        "ext-gd": "*"
+        "ext-gd": "*",
+        "firebase/php-jwt": "^5.0"
     },
     "license": "GPL-3.0",
     "authors": [

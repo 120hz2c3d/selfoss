@@ -2,6 +2,8 @@
 
 namespace helpers;
 
+use helpers\Authentication\ProviderInterface;
+
 /**
  * Helper class for authenticate user
  *
@@ -10,47 +12,79 @@ namespace helpers;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class Authentication {
+    const AUTH_TYPE_COOKIE = 'auth_cookie';
+    const AUTH_TYPE_JWT = 'auth_jwt';
+
     /** @var bool loggedin */
     private $loggedin = false;
 
+    /** @var string authType*/
+    private $authType;
+
+    /** @var ProviderInterface authProvider */
+    private $authProvider;
+
     /**
      * start session and check login
+     * @param string $authType
      */
-    public function __construct() {
+    public function __construct($authType = self::AUTH_TYPE_COOKIE) {
         if ($this->enabled() === false) {
             return;
         }
 
-        $base_url = parse_url(\helpers\View::getBaseUrl());
+        $this->authType = $authType;
 
-        // session cookie will be valid for one month.
-        $cookie_expire = 3600 * 24 * 30;
-        $cookie_secure = $base_url['scheme'] === 'https';
-        $cookie_httponly = true;
-        $cookie_path = $base_url['path'];
-        $cookie_domain = $base_url['host'];
+        $authProvider = $this->getAuthProvider();
+        $authProvider->initialize();
 
-        session_set_cookie_params(
-            $cookie_expire, $cookie_path, $cookie_domain, $cookie_secure, $cookie_httponly
-        );
-        \F3::get('logger')->debug("set cookie on $cookie_domain$cookie_path expiring in $cookie_expire seconds");
+        $this->setLoggedInByAuthProvider($authProvider);
 
-        session_name();
-        if (session_id() === '') {
-            session_start();
+        if ($this->isLoggedin() === false) {
+            $this->tryToLoginByRequest();
         }
-        if (isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true) {
-            $this->loggedin = true;
+
+    }
+
+    /**
+     * @return ProviderInterface
+     */
+    private function getAuthProvider() {
+        if ($this->authProvider === null) {
+            $this->authProvider = $this->getProviderByAuthType($this->authType);
+        }
+
+        return $this->authProvider;
+    }
+
+    /**
+     * @param string $authType
+     * @return Authentication\ProviderInterface
+     */
+    private function getProviderByAuthType($authType)
+    {
+        if ($authType === self::AUTH_TYPE_COOKIE) {
+            return new Authentication\Provider\Session();
+        }
+
+        if ($authType === self::AUTH_TYPE_JWT) {
+            return new Authentication\Provider\JsonWebToken();
+        }
+
+        \F3::get('logger')->debug('Invalid auth type given - use session as fallback');
+        return new Authentication\Provider\Session();
+    }
+
+    /**
+     * @param ProviderInterface $authProvider
+     */
+    private function setLoggedInByAuthProvider(ProviderInterface $authProvider) {
+        $this->loggedin = $authProvider->isLoggedIn();
+
+        if ($this->loggedin) {
             \F3::get('logger')->debug('logged in using valid session');
         } else {
             \F3::get('logger')->debug('session does not contain valid auth');
-        }
-
-        // autologin if request contains unsername and password
-        if ($this->loggedin === false
-            && isset($_REQUEST['username'])
-            && isset($_REQUEST['password'])) {
-            $this->login($_REQUEST['username'], $_REQUEST['password']);
         }
     }
 
@@ -80,7 +114,9 @@ class Authentication {
                 $username === \F3::get('username') && hash('sha512', \F3::get('salt') . $password) === \F3::get('password')
             ) {
                 $this->loggedin = true;
-                $_SESSION['loggedin'] = true;
+
+                $this->getAuthProvider()->login();
+
                 \F3::get('logger')->debug('logged in with supplied username and password');
 
                 return true;
@@ -123,8 +159,27 @@ class Authentication {
      */
     public function logout() {
         $this->loggedin = false;
-        $_SESSION['loggedin'] = false;
-        session_destroy();
-        \F3::get('logger')->debug('logged out and destroyed session');
+        $this->getAuthProvider()->logout();
+
+        \F3::get('logger')->debug('logged out');
+    }
+
+    /**
+     * tryToLoginByRequest
+     */
+    private function tryToLoginByRequest()
+    {
+        if (isset($_REQUEST['username'])
+            && isset($_REQUEST['password'])) {
+            $this->login($_REQUEST['username'], $_REQUEST['password']);
+        }
+    }
+
+    /**
+     * @return string|null
+     */
+    public function getPayload()
+    {
+        return $this->getAuthProvider()->getPayload();
     }
 }
